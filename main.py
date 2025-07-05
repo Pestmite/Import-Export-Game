@@ -240,7 +240,7 @@ for i in range(COUNTRY_COUNT):
     country_list.append(Countries(i))
 
 # Game loop
-for i in range(100):
+for i in range(50000):
     for country in country_list:
         country.find_power_level()
         country.generate_money()

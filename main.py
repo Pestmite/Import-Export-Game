@@ -188,10 +188,10 @@ class Countries:
         return self.power_level, mine_level, money_level
 
     def choose_action(self):
-        actions = ('mine', 'town', 'connection', 'blockade')
+        actions = ('mine', 'town', 'connection', 'blockade', 'remove_connection', 'remove_blockade')
         state = self.get_state()
 
-        if state not in q_table:
+        if state not in q_table or len(q_table[state]) != len(actions):
             q_table[state] = [0] * len(actions)
 
         if random.random() < epsilon:
@@ -201,7 +201,8 @@ class Countries:
             return max(range(len(actions)), key=lambda j: q_table[state][j])
 
     def execute_actions(self):
-        actions = (self.purchase_mine, self.purchase_town, self.purchase_connection, self.purchase_blockade)
+        actions = (self.purchase_mine, self.purchase_town, self.purchase_connection, self.purchase_blockade,
+                   self.remove_connection, self.remove_blockade)
         for _ in range(10):
             actions[self.choose_action()]()
 
@@ -234,18 +235,23 @@ class Countries:
         )
 
 
-# Setup
-load_q_table()
-for i in range(COUNTRY_COUNT):
-    country_list.append(Countries(i))
+games = 1000
+for game in range(games):
+    country_list = []
 
-# Game loop
-for i in range(50000):
-    for country in country_list:
-        country.find_power_level()
-        country.generate_money()
-        country.q_learning()
+    # Setup
+    load_q_table()
+    for i in range(COUNTRY_COUNT):
+        country_list.append(Countries(i))
 
-print(country_list)
+    # Game loop
+    for _ in range(100):
+        for country in country_list:
+            country.find_power_level()
+            country.generate_money()
+            country.q_learning()
+
+    print(f"{math.ceil(game / games * 100)}% complete")
+    save_q_table()
+
 print(q_table)
-save_q_table()

@@ -138,6 +138,16 @@ class Countries:
             selected_connection[2] = False
             target_country.markets += selected_connection[1]
 
+    def rule_based(self):
+        self.purchase_connection()
+        if self.mines == 0:
+            self.purchase_mine()
+        elif self.towns < 2 * self.name:
+            self.purchase_town()
+        else:
+            self.purchase_connection()
+            self.purchase_mine()
+
 
 # Setup
 for i in range(COUNTRY_COUNT):
@@ -148,6 +158,6 @@ for i in range(100):
     for country in country_list:
         country.find_power_level()
         country.generate_money()
+        country.rule_based()
 
 print(country_list)
-

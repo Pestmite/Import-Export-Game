@@ -1,10 +1,32 @@
 import random
 import math
+import json
+import ast
 
 COUNTRY_COUNT = 10
 country_list = []
 power_levels = [0, 5, 10, 16]
 max_connections = [0, 1, 3, 5]
+
+q_table = {}
+epsilon = 0.1  # chance of mutation
+alpha = 0.1  # learning rate
+gamma = 0.9  # discount factor
+
+
+def load_q_table(filename='q_table.json'):
+    global q_table
+    try:
+        with open(filename, 'r') as file:
+            data = json.load(file)
+            q_table = {ast.literal_eval(k): v for k, v in data.items()}
+    except FileNotFoundError:
+        q_table = {}
+
+
+def save_q_table(filename='q_table.json'):
+    with open(filename, 'w') as file:
+        json.dump({str(k): v for k, v in q_table.items()}, file)
 
 
 class Countries:
@@ -148,8 +170,72 @@ class Countries:
             self.purchase_connection()
             self.purchase_mine()
 
+    def can_afford_anything(self):
+        return (
+            self.reserve >= self.power_level or
+            self.reserve >= (3 if self.mines == 0 else 7) or
+            self.reserve >= 3)
+
+    def get_state(self):
+        max_mine_level = 5
+        mine_level_incr = 5
+        max_money_level = 5
+        money_level_incr = 25
+
+        mine_level = min(self.mines // mine_level_incr, max_mine_level - 1) + 1
+        money_level = min(self.reserve // money_level_incr, max_money_level - 1) + 1
+
+        return self.power_level, mine_level, money_level
+
+    def choose_action(self):
+        actions = ('mine', 'town', 'connection', 'blockade')
+        state = self.get_state()
+
+        if state not in q_table:
+            q_table[state] = [0] * len(actions)
+
+        if random.random() < epsilon:
+            return random.randint(0, len(actions) - 1)
+        else:
+            # lambda function loops through all the q_table values to find the highest one
+            return max(range(len(actions)), key=lambda j: q_table[state][j])
+
+    def execute_actions(self):
+        actions = (self.purchase_mine, self.purchase_town, self.purchase_connection, self.purchase_blockade)
+        for _ in range(10):
+            actions[self.choose_action()]()
+
+            if not self.can_afford_anything():
+                break
+
+    # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
+    def q_learning(self):
+        old_state = self.get_state()
+
+        pre_income = self.generate_money(False)
+        action_index = self.choose_action()
+
+        self.execute_actions()
+
+        new_state = self.get_state()
+
+        post_income = self.generate_money(False)
+        reward = 1.5 * (post_income - pre_income) + self.power_level + self.mines * 0.8
+
+        if old_state not in q_table:
+            q_table[old_state] = [0] * 4
+        if new_state not in q_table:
+            q_table[new_state] = [0] * 4
+
+        old_value = q_table[old_state][action_index]
+        future_estimate = max(q_table[new_state])
+        q_table[old_state][action_index] = old_value + alpha * (
+            reward + gamma * future_estimate - old_value
+        )
+
 
 # Setup
+load_q_table()
 for i in range(COUNTRY_COUNT):
     country_list.append(Countries(i))
 
@@ -158,6 +244,8 @@ for i in range(100):
     for country in country_list:
         country.find_power_level()
         country.generate_money()
-        country.rule_based()
+        country.q_learning()
 
 print(country_list)
+print(q_table)
+save_q_table()

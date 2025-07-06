@@ -112,26 +112,27 @@ class Countries:
         if self.reserve >= cost and len(self.connections) + 1 <= max_connections[self.power_level - 1]:
             if connection_found:
                 found_connection[1] += 1
-                # Starting bonus for importer, also allows for an instant blockade (blockade cost = 3)
-                country_list[importer].reserve += 3
-                country_list[importer].markets += 1
 
             else:
                 # [country_index, connection_level, is_blocked]
                 self.connections.append([country_list[importer].name, 1, False])
-                # Starting bonus for importer, also allows for an instant blockade (blockade cost = 3)
-                country_list[importer].reserve += 3
-                country_list[importer].markets += 1
+
+            # Starting bonus for importer, also allows for an instant blockade (blockade cost = 3)
+            country_list[importer].reserve += 3
+            country_list[importer].markets += 1
 
             self.reserve -= cost
 
     def remove_connection(self, import_index=-1):
         if not self.connections:
             return
-        if import_index == -1:
-            self.connections.pop(random.randint(0, len(self.connections) - 1))
         else:
-            self.connections = [c for c in self.connections if c[0] != import_index]
+            if import_index == -1:
+                self.connections.pop(random.randint(0, len(self.connections) - 1))
+            else:
+                self.connections = [c for c in self.connections if c[0] != import_index]
+            print('connection removed')
+        print('attempt')
 
     def purchase_blockade(self, import_index=-1):
         blockade_cost = 3
@@ -147,6 +148,8 @@ class Countries:
             selected_connection[2] = True
             target_country.markets = max(0, (target_country.markets - selected_connection[1]))
             self.reserve -= blockade_cost
+            print('blockade purchased')
+        print('attempt')
 
     def remove_blockade(self, import_index=-1):
         blocked = []
@@ -160,6 +163,8 @@ class Countries:
             target_country, selected_connection = random.choice(blocked) if import_index < 0 else blocked[import_index]
             selected_connection[2] = False
             target_country.markets += selected_connection[1]
+            print('blockade removed')
+        print('attempt')
 
     def rule_based(self):
         self.purchase_connection()
@@ -204,10 +209,30 @@ class Countries:
         actions = (self.purchase_mine, self.purchase_town, self.purchase_connection, self.purchase_blockade,
                    self.remove_connection, self.remove_blockade)
         for _ in range(10):
-            actions[self.choose_action()]()
+            action_index = self.choose_action()
 
-            if not self.can_afford_anything():
-                break
+            if action_index == 2:
+                reward = [-1, None]
+
+                for importer_i, importer in enumerate(country_list):
+                    if importer_i == self.name:
+                        continue
+
+                    connection_level = 1
+                    for c in self.connections:
+                        if c[0] == importer_i:
+                            connection_level = c[1] + 1
+                            break
+
+                    if connection_level <= 3:
+                        value = (4 * math.floor((importer.towns + importer.markets) / max(1, 6 - connection_level))) - connection_level * 6
+                        reward = [value, importer.name] if value > reward[0] else reward
+
+                if reward[0] > 0:
+                    self.purchase_connection(reward[1])
+
+            else:
+                actions[action_index]()
 
     # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
     def q_learning(self):
@@ -221,7 +246,7 @@ class Countries:
         new_state = self.get_state()
 
         post_income = self.generate_money(False)
-        reward = (post_income - pre_income)
+        reward = (post_income - pre_income) + len(self.connections)
 
         if old_state not in q_table or len(q_table[old_state]) != NUM_OF_ACTIONS:
             q_table[old_state] = [0] * NUM_OF_ACTIONS

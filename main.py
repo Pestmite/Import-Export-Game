@@ -4,15 +4,15 @@ import json
 import ast
 
 COUNTRY_COUNT = 10
-NUM_OF_ACTIONS = 6
+NUM_OF_ACTIONS = 7
 country_list = []
 power_levels = [0, 5, 10, 16]
 max_connections = [0, 1, 3, 5]
 
 q_table = {}
-epsilon = 0.1  # chance of mutation
-alpha = 0.1  # learning rate
-gamma = 0.9  # discount factor
+epsilon = 0.01  # chance of mutation
+alpha = 0.2  # learning rate
+gamma = 0.7  # discount factor
 
 
 def load_q_table(filename='q_table.json'):
@@ -39,10 +39,11 @@ class Countries:
         self.connections = []
         self.power_level = 1
         self.reserve = 0
+        self.life_time_earning = 0
 
     def __repr__(self):
         return (f"\n{self.name} = Towns: {self.towns} + {self.markets} ({self.power_level}), "
-                f"Mines: {self.mines}, Connections: {self.connections}, Money: {self.reserve}")
+                f"Mines: {self.mines}, Connections: {self.connections}, Money: {self.reserve} ({self.life_time_earning})")
 
     def find_power_level(self):
         for level, min_towns in enumerate(power_levels):
@@ -68,6 +69,7 @@ class Countries:
 
         if generated:
             self.reserve += income
+            self.life_time_earning += income
         else:
             return income
 
@@ -119,6 +121,7 @@ class Countries:
 
             # Starting bonus for importer, also allows for an instant blockade (blockade cost = 3)
             country_list[importer].reserve += 3
+            country_list[importer].life_time_earning += 3
             country_list[importer].markets += 1
 
             self.reserve -= cost
@@ -159,6 +162,9 @@ class Countries:
             target_country, selected_connection = random.choice(blocked) if import_index < 0 else blocked[import_index]
             selected_connection[2] = False
             target_country.markets += selected_connection[1]
+
+    def do_nothing(self):
+        pass
 
     def rule_based(self):
         self.purchase_connection()
@@ -201,8 +207,8 @@ class Countries:
 
     def execute_actions(self):
         actions = (self.purchase_mine, self.purchase_town, self.purchase_connection, self.purchase_blockade,
-                   self.remove_connection, self.remove_blockade)
-        for _ in range(10):
+                   self.remove_connection, self.remove_blockade, self.do_nothing)
+        while self.can_afford_anything():
             action_index = self.choose_action()
 
             if action_index == 2:
@@ -225,11 +231,13 @@ class Countries:
                 if reward[0] > 0:
                     self.purchase_connection(reward[1])
 
+            elif action_index == 6:
+                break
             else:
                 actions[action_index]()
 
     # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
-    def q_learning(self, turn_index):
+    def q_learning(self):
         old_state = self.get_state()
 
         pre_income = self.generate_money(False)
@@ -254,7 +262,9 @@ class Countries:
         )
 
 
-games = 10000
+games = 100
+highest_lte = 0
+highest_reserve = 0
 for game in range(games):
     country_list = []
 
@@ -264,17 +274,26 @@ for game in range(games):
         country_list.append(Countries(i))
 
     # Game loop
-    for turn in range(100):
+    for _ in range(100):
         for country in country_list:
             country.find_power_level()
             country.generate_money()
-            country.q_learning(turn)
+            country.q_learning()
 
-    epsilon = max(0.01, epsilon * 0.995)
-    alpha = max(0.01, alpha * 0.995)
+    epsilon = max(0.01, epsilon * 0.99)
+    alpha = max(0.01, alpha * 0.99)
 
     print(country_list)
     print(f"{math.ceil(game / games * 100)}% complete")
     save_q_table()
 
+    for i in range(len(country_list)):
+        if country_list[i].reserve > highest_reserve:
+            highest_reserve = country_list[i].reserve
+
+    for i in range(len(country_list)):
+        if country_list[i].life_time_earning > highest_lte:
+            highest_lte = country_list[i].life_time_earning
+
 print(q_table)
+print(highest_lte, highest_reserve)

@@ -131,40 +131,34 @@ class Countries:
                 self.connections.pop(random.randint(0, len(self.connections) - 1))
             else:
                 self.connections = [c for c in self.connections if c[0] != import_index]
-            print('connection removed')
-        print('attempt')
 
     def purchase_blockade(self, import_index=-1):
         blockade_cost = 3
         imports = []
 
-        for other_country in country_list:
-            for connection in other_country.connections:
-                if connection[0] == self.name and not connection[2]:
-                    imports.append((other_country, connection))
+        if self.reserve >= blockade_cost:
+            for other_country in country_list:
+                for connection in other_country.connections:
+                    if connection[0] == self.name and not connection[2]:
+                        imports.append((other_country, connection))
 
-        if imports and self.reserve >= blockade_cost:
-            target_country, selected_connection = random.choice(imports) if import_index < 0 else imports[import_index]
-            selected_connection[2] = True
-            target_country.markets = max(0, (target_country.markets - selected_connection[1]))
-            self.reserve -= blockade_cost
-            print('blockade purchased')
-        print('attempt')
+            if imports:
+                target_country, selected_connection = random.choice(imports) if import_index < 0 else imports[import_index]
+                selected_connection[2] = True
+                target_country.markets = max(0, (target_country.markets - selected_connection[1]))
+                self.reserve -= blockade_cost
 
     def remove_blockade(self, import_index=-1):
-        blocked = []
-
-        for other_country in country_list:
-            for connection in other_country.connections:
-                if connection[0] == self.name and connection[2]:
-                    blocked.append((other_country, connection))
+        blocked = [
+            (other_country, connection)
+            for other_country in country_list
+            for connection in other_country.connections
+            if connection[0] == self.name and connection[2]]
 
         if blocked:
             target_country, selected_connection = random.choice(blocked) if import_index < 0 else blocked[import_index]
             selected_connection[2] = False
             target_country.markets += selected_connection[1]
-            print('blockade removed')
-        print('attempt')
 
     def rule_based(self):
         self.purchase_connection()
@@ -235,7 +229,7 @@ class Countries:
                 actions[action_index]()
 
     # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
-    def q_learning(self):
+    def q_learning(self, turn_index):
         old_state = self.get_state()
 
         pre_income = self.generate_money(False)
@@ -246,7 +240,7 @@ class Countries:
         new_state = self.get_state()
 
         post_income = self.generate_money(False)
-        reward = (post_income - pre_income) + len(self.connections)
+        reward = (post_income - pre_income) + len(self.connections) * 10 + self.mines
 
         if old_state not in q_table or len(q_table[old_state]) != NUM_OF_ACTIONS:
             q_table[old_state] = [0] * NUM_OF_ACTIONS
@@ -260,7 +254,7 @@ class Countries:
         )
 
 
-games = 100
+games = 10000
 for game in range(games):
     country_list = []
 
@@ -270,11 +264,14 @@ for game in range(games):
         country_list.append(Countries(i))
 
     # Game loop
-    for _ in range(100):
+    for turn in range(100):
         for country in country_list:
             country.find_power_level()
             country.generate_money()
-            country.q_learning()
+            country.q_learning(turn)
+
+    epsilon = max(0.01, epsilon * 0.995)
+    alpha = max(0.01, alpha * 0.995)
 
     print(country_list)
     print(f"{math.ceil(game / games * 100)}% complete")

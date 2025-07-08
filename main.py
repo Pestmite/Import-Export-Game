@@ -4,7 +4,6 @@ import json
 import ast
 
 COUNTRY_COUNT = 10
-NUM_OF_ACTIONS = 7
 country_list = []
 power_levels = [0, 5, 10, 16]
 max_connections = [0, 1, 3, 5]
@@ -16,11 +15,8 @@ gamma = 0.7  # discount factor
 
 '''
 To-do:
- - Make remove blockade thought out
- - Make remove connection thought out
  - Retaliation for blockade and connection removal
  - Positive gain for connection and blockade removal
- - Organise code and cut down
  - Fix market haywire
 '''
 
@@ -50,6 +46,9 @@ class Countries:
         self.power_level = 1
         self.reserve = 0
         self.life_time_earning = 0
+
+        self.actions = (self.purchase_mine, self.purchase_town, self.purchase_connection, self.purchase_blockade,
+                        self.remove_connection, self.remove_blockade, self.do_nothing)
 
     def __repr__(self):
         return (f"\n{self.name} = Towns: {self.towns} + {self.markets} ({self.power_level}), "
@@ -100,11 +99,33 @@ class Countries:
             self.reserve -= town_cost
             self.towns += 1
 
-    def purchase_connection(self, import_index=-1):
+    def purchase_connection(self, random_importer=False):
         max_connection_level = 3
         first_connection_cost = 3
 
-        importer = random.choice([j for j in range(COUNTRY_COUNT) if j != self.name]) if import_index < 0 else import_index
+        if random_importer:
+            importer = random.choice([j for j in range(COUNTRY_COUNT) if j != self.name])
+        else:
+            reward = (-1, None)
+
+            for importer_i, importer in enumerate(country_list):
+                if importer_i == self.name:
+                    continue
+
+                connection_level = 1
+                for c in self.connections:
+                    if c[0] == importer_i:
+                        connection_level = c[1] + 1
+                        break
+
+                if connection_level <= 3:
+                    value = (4 * math.floor((importer.towns + importer.markets) / max(1, 6 - connection_level))) - connection_level * 6
+                    reward = (value, importer.name) if value > reward[0] else reward
+
+            if reward[1] is None:
+                return
+            importer = reward[1]
+
         connection_found = False
         connection_level = 1
         found_connection = None
@@ -263,10 +284,7 @@ class Countries:
             self.purchase_mine()
 
     def can_afford_anything(self):
-        return (
-            self.reserve >= self.power_level or
-            self.reserve >= (3 if self.mines == 0 else 7) or
-            self.reserve >= 3)
+        return self.reserve >= self.power_level or self.reserve >= (3 if self.mines == 0 else 7) or self.reserve >= 3
 
     def get_state(self):
         max_mine_level = 10
@@ -275,56 +293,38 @@ class Countries:
         money_level_incr = 25
 
         mine_level = min(self.mines // mine_level_incr, max_mine_level - 1) + 1
-        money_level = min(self.reserve // money_level_incr, max_money_level - 1) + 1
+        money_level = max((min(self.reserve // money_level_incr, max_money_level - 1) + 1), 0)
 
         return self.power_level, mine_level, money_level, len(self.connections)
 
     def choose_action(self):
+        num_of_actions = len(self.actions)
         state = self.get_state()
 
-        if state not in q_table or len(q_table[state]) != NUM_OF_ACTIONS:
-            q_table[state] = [0] * NUM_OF_ACTIONS
+        if state not in q_table or len(q_table[state]) != num_of_actions:
+            q_table[state] = [0] * num_of_actions
 
         if random.random() < epsilon:
-            return random.randint(0, NUM_OF_ACTIONS - 1)
+            return random.randint(0, num_of_actions - 1)
         else:
             # lambda function loops through all the q_table values to find the highest one
-            return max(range(NUM_OF_ACTIONS), key=lambda j: q_table[state][j])
+            return max(range(num_of_actions), key=lambda j: q_table[state][j])
 
     def execute_actions(self):
-        actions = (self.purchase_mine, self.purchase_town, self.purchase_connection, self.purchase_blockade,
-                   self.remove_connection, self.remove_blockade, self.do_nothing)
         while self.can_afford_anything():
             action_index = self.choose_action()
 
-            if action_index == 2:
-                reward = [-1, None]
-
-                for importer_i, importer in enumerate(country_list):
-                    if importer_i == self.name:
-                        continue
-
-                    connection_level = 1
-                    for c in self.connections:
-                        if c[0] == importer_i:
-                            connection_level = c[1] + 1
-                            break
-
-                    if connection_level <= 3:
-                        value = (4 * math.floor((importer.towns + importer.markets) / max(1, 6 - connection_level))) - connection_level * 6
-                        reward = [value, importer.name] if value > reward[0] else reward
-
-                if reward[0] > 0:
-                    self.purchase_connection(reward[1])
-            elif action_index == 6:
+            if action_index == 6:
                 break
             else:
-                actions[action_index]()
+                self.actions[action_index]()
 
     # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
     def q_learning(self):
+        num_of_actions = len(self.actions)
         old_state = self.get_state()
         pre_income = self.generate_money(False)
+        pre_connections = len(self.connections)
 
         action_index = self.choose_action()
         self.execute_actions()
@@ -332,12 +332,12 @@ class Countries:
         new_state = self.get_state()
         post_income = self.generate_money(False)
 
-        reward = (post_income - pre_income) + len(self.connections) * 10 + self.mines
+        reward = (post_income - pre_income) + (len(self.connections) - pre_connections) * 10 + self.mines
 
-        if old_state not in q_table or len(q_table[old_state]) != NUM_OF_ACTIONS:
-            q_table[old_state] = [0] * NUM_OF_ACTIONS
-        if new_state not in q_table or len(q_table[new_state]) != NUM_OF_ACTIONS:
-            q_table[new_state] = [0] * NUM_OF_ACTIONS
+        if old_state not in q_table or len(q_table[old_state]) != num_of_actions:
+            q_table[old_state] = [0] * num_of_actions
+        if new_state not in q_table or len(q_table[new_state]) != num_of_actions:
+            q_table[new_state] = [0] * num_of_actions
 
         old_value = q_table[old_state][action_index]
         future_estimate = max(q_table[new_state])

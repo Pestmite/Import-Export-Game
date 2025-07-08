@@ -136,14 +136,39 @@ class Countries:
 
             self.reserve -= cost
 
-    def remove_connection(self, import_index=-1):
+    def remove_connection(self, random_importer=False):
         if not self.connections:
             return
+
+        if random_importer:
+            self.connections.pop(random.randint(0, len(self.connections) - 1))
         else:
-            if import_index == -1:
-                self.connections.pop(random.randint(0, len(self.connections) - 1))
-            else:
-                self.connections = [c for c in self.connections if c[0] != import_index]
+            connector_names = {conn[0] for conn in self.connections}
+            best_cut = None
+            best_cut_score = float('-inf')
+            fallback_cut = None
+            fallback_cut_score = float('-inf')
+
+            for connection in self.connections:
+                other_country = country_list[connection[0]]
+
+                estimated_income = (math.floor(other_country.mines / 2)
+                                    + math.floor((self.towns + self.markets) / max(1, 6 - connection[1]))
+                                    + connection[1] * 3)  # Add value to AI losing from connection
+
+                if other_country.name not in connector_names:
+                    if estimated_income > best_cut_score:
+                        best_cut = (other_country, connection)
+                        best_cut_score = estimated_income
+                else:
+                    if estimated_income > fallback_cut_score:
+                        fallback_cut = (other_country, connection)
+                        fallback_cut_score = estimated_income
+
+            selected = best_cut if best_cut else fallback_cut
+            if not selected:
+                return
+            self.connections = [c for c in self.connections if c[0] != selected]
 
     def purchase_blockade(self, random_importer=False):  # Smart by default
         blockade_cost = 3

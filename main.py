@@ -135,7 +135,7 @@ class Countries:
             else:
                 self.connections = [c for c in self.connections if c[0] != import_index]
 
-    def purchase_blockade(self, random_importer=True):
+    def purchase_blockade(self, random_importer=False):
         blockade_cost = 3
         imports = []
 
@@ -150,23 +150,22 @@ class Countries:
                     target_country, selected_connection = random.choice(imports)
                 else:
                     connector_names = {conn[0] for conn in self.connections}
-                    best_cut = (-1, None)
-                    fallback_cut = (-1, None)
+                    best_cut = (None, float('-inf'))
+                    fallback_cut = (None, float('-inf'))
 
                     for other_country, connection in imports:
-                        estimated_income = 0
-                        estimated_income += math.floor(other_country.mines / 2)
-                        estimated_income += math.floor((self.towns + self.markets) / max(1, 6 - connection[1]))
-                        estimated_income += connection[1] * 3  # Add value to AI losing from connection
+                        estimated_income = (math.floor(other_country.mines / 2)
+                                            + math.floor((self.towns + self.markets) / max(1, 6 - connection[1]))
+                                            + connection[1] * 3)  # Add value to AI losing from connection
 
                         if other_country.name not in connector_names:
                             if estimated_income > best_cut[1]:
-                                best_cut = (estimated_income, (other_country, connection))
+                                best_cut = ((other_country, connection), estimated_income)
                         else:
                             if estimated_income > fallback_cut[1]:
-                                fallback_cut = (estimated_income, (other_country, connection))
+                                fallback_cut = ((other_country, connection), estimated_income)
 
-                    selected = best_cut[1] if best_cut[1] else fallback_cut[1]
+                    selected = best_cut[0] if best_cut[1] > float('-inf') else fallback_cut[0]
                     if not selected:
                         return
                     target_country, selected_connection = selected
@@ -176,11 +175,8 @@ class Countries:
                 self.reserve -= blockade_cost
 
     def remove_blockade(self, import_index=-1):
-        blocked = [
-            (other_country, connection)
-            for other_country in country_list
-            for connection in other_country.connections
-            if connection[0] == self.name and connection[2]]
+        blocked = [(other_country, connection) for other_country in country_list for connection in other_country.connections if
+                   connection[0] == self.name and connection[2]]
 
         if blocked:
             target_country, selected_connection = random.choice(blocked) if import_index < 0 else blocked[import_index]
@@ -254,7 +250,6 @@ class Countries:
 
                 if reward[0] > 0:
                     self.purchase_connection(reward[1])
-
             elif action_index == 6:
                 break
             else:

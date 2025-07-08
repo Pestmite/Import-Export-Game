@@ -135,7 +135,7 @@ class Countries:
             else:
                 self.connections = [c for c in self.connections if c[0] != import_index]
 
-    def purchase_blockade(self, import_index=-1):
+    def purchase_blockade(self, random_importer=True):
         blockade_cost = 3
         imports = []
 
@@ -146,7 +146,38 @@ class Countries:
                         imports.append((other_country, connection))
 
             if imports:
-                target_country, selected_connection = random.choice(imports) if import_index < 0 else imports[import_index]
+                if random_importer:
+                    target_country, selected_connection = random.choice(imports)
+                else:
+                    connector_names = {conn[0] for conn in self.connections}
+
+                    connector = []
+                    for connection in self.connections:
+                        connector.append(connection[0])
+
+                    best_cut = (-1, None)
+                    fallback_cut = (-1, None)
+                    for other_country, connection in imports:
+                        estimated_income = 0
+                        estimated_income += math.floor(other_country.mines / 2)
+                        estimated_income += math.floor((self.towns + self.markets) / max(1, 6 - connection[1]))
+                        # Add value to AI losing from connection
+                        estimated_income += other_country.connections[x][1] * 3
+
+                        if other_country.name not in connector:
+                            if estimated_income > best_cut[1]:
+                                best_cut = (estimated_income, (other_country, connection))
+                        else:
+                            if estimated_income > fallback_cut[1]:
+                                fallback_cut = (estimated_income, (other_country, connection))
+
+                    selected = best_cut[1] if best_cut[1] else fallback_cut[1]
+
+                    if selected:
+                        target_country, selected_connection = selected
+                    else:
+                        return
+
                 selected_connection[2] = True
                 target_country.markets = max(0, (target_country.markets - selected_connection[1]))
                 self.reserve -= blockade_cost
@@ -239,15 +270,14 @@ class Countries:
     # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
     def q_learning(self):
         old_state = self.get_state()
-
         pre_income = self.generate_money(False)
-        action_index = self.choose_action()
 
+        action_index = self.choose_action()
         self.execute_actions()
 
         new_state = self.get_state()
-
         post_income = self.generate_money(False)
+
         reward = (post_income - pre_income) + len(self.connections) * 10 + self.mines
 
         if old_state not in q_table or len(q_table[old_state]) != NUM_OF_ACTIONS:

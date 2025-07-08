@@ -150,21 +150,16 @@ class Countries:
                     target_country, selected_connection = random.choice(imports)
                 else:
                     connector_names = {conn[0] for conn in self.connections}
-
-                    connector = []
-                    for connection in self.connections:
-                        connector.append(connection[0])
-
                     best_cut = (-1, None)
                     fallback_cut = (-1, None)
+
                     for other_country, connection in imports:
                         estimated_income = 0
                         estimated_income += math.floor(other_country.mines / 2)
                         estimated_income += math.floor((self.towns + self.markets) / max(1, 6 - connection[1]))
-                        # Add value to AI losing from connection
-                        estimated_income += other_country.connections[x][1] * 3
+                        estimated_income += connection[1] * 3  # Add value to AI losing from connection
 
-                        if other_country.name not in connector:
+                        if other_country.name not in connector_names:
                             if estimated_income > best_cut[1]:
                                 best_cut = (estimated_income, (other_country, connection))
                         else:
@@ -172,11 +167,9 @@ class Countries:
                                 fallback_cut = (estimated_income, (other_country, connection))
 
                     selected = best_cut[1] if best_cut[1] else fallback_cut[1]
-
-                    if selected:
-                        target_country, selected_connection = selected
-                    else:
+                    if not selected:
                         return
+                    target_country, selected_connection = selected
 
                 selected_connection[2] = True
                 target_country.markets = max(0, (target_country.markets - selected_connection[1]))

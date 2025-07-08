@@ -150,8 +150,10 @@ class Countries:
                     target_country, selected_connection = random.choice(imports)
                 else:
                     connector_names = {conn[0] for conn in self.connections}
-                    best_cut = (None, float('-inf'))
-                    fallback_cut = (None, float('-inf'))
+                    best_cut = None
+                    best_cut_score = float('-inf')
+                    fallback_cut = None
+                    fallback_cut_score = float('-inf')
 
                     for other_country, connection in imports:
                         estimated_income = (math.floor(other_country.mines / 2)
@@ -159,13 +161,15 @@ class Countries:
                                             + connection[1] * 3)  # Add value to AI losing from connection
 
                         if other_country.name not in connector_names:
-                            if estimated_income > best_cut[1]:
-                                best_cut = ((other_country, connection), estimated_income)
+                            if estimated_income > best_cut_score:
+                                best_cut = (other_country, connection)
+                                best_cut_score = estimated_income
                         else:
-                            if estimated_income > fallback_cut[1]:
-                                fallback_cut = ((other_country, connection), estimated_income)
+                            if estimated_income > fallback_cut_score:
+                                fallback_cut = (other_country, connection)
+                                fallback_cut_score = estimated_income
 
-                    selected = best_cut[0] if best_cut[1] > float('-inf') else fallback_cut[0]
+                    selected = best_cut if best_cut else fallback_cut
                     if not selected:
                         return
                     target_country, selected_connection = selected
@@ -283,6 +287,7 @@ class Countries:
 games = 100
 highest_lte = 0
 highest_reserve = 0
+highest_income = 0
 for game in range(games):
     country_list = []
 
@@ -310,8 +315,10 @@ for game in range(games):
             highest_reserve = country_list[i].reserve
 
     for i in range(len(country_list)):
-        if country_list[i].life_time_earning > highest_lte:
-            highest_lte = country_list[i].life_time_earning
+        country_income = country_list[i].generate_money(False)
+        if country_income > highest_income:
+            highest_income = country_income
 
 print(q_table)
-print(highest_lte, highest_reserve)
+print(f'Most money in reserve: {highest_reserve}')
+print(f'Highest income per turn: {highest_income}')

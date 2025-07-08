@@ -14,6 +14,16 @@ epsilon = 0.01  # chance of mutation
 alpha = 0.2  # learning rate
 gamma = 0.7  # discount factor
 
+'''
+To-do:
+ - Make remove blockade thought out
+ - Make remove connection thought out
+ - Retaliation for blockade and connection removal
+ - Positive gain for connection and blockade removal
+ - Organise code and cut down
+ - Fix market haywire
+'''
+
 
 def load_q_table(filename='q_table.json'):
     global q_table
@@ -135,7 +145,7 @@ class Countries:
             else:
                 self.connections = [c for c in self.connections if c[0] != import_index]
 
-    def purchase_blockade(self, random_importer=False):
+    def purchase_blockade(self, random_importer=False):  # Smart by default
         blockade_cost = 3
         imports = []
 
@@ -178,12 +188,39 @@ class Countries:
                 target_country.markets = max(0, (target_country.markets - selected_connection[1]))
                 self.reserve -= blockade_cost
 
-    def remove_blockade(self, import_index=-1):
+    def remove_blockade(self, random_removal=False):  # Smart by default
         blocked = [(other_country, connection) for other_country in country_list for connection in other_country.connections if
                    connection[0] == self.name and connection[2]]
 
         if blocked:
-            target_country, selected_connection = random.choice(blocked) if import_index < 0 else blocked[import_index]
+            if random_removal:
+                target_country, selected_connection = random.choice(blocked)
+            else:
+                connector_names = {conn[0] for conn in self.connections}
+                best_blocked = None
+                best_blocked_score = float('inf')
+                fallback_blocked = None
+                fallback_blocked_score = float('inf')
+
+                for other_country, connection in blocked:
+                    estimated_income = (math.floor(other_country.mines / 2)
+                                        + math.floor((self.towns + self.markets) / max(1, 6 - connection[1]))
+                                        + connection[1] * 3)  # Add value to AI losing from connection
+
+                    if other_country.name not in connector_names:
+                        if estimated_income < best_blocked_score:
+                            best_blocked = (other_country, connection)
+                            best_blocked_score = estimated_income
+                    else:
+                        if estimated_income < fallback_blocked_score:
+                            fallback_blocked = (other_country, connection)
+                            fallback_blocked_score = estimated_income
+
+                selected = best_blocked if best_blocked else fallback_blocked
+                if not selected:
+                    return
+                target_country, selected_connection = selected
+
             selected_connection[2] = False
             target_country.markets += selected_connection[1]
 

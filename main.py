@@ -4,6 +4,7 @@ import json
 import ast
 
 COUNTRY_COUNT = 10
+PERCEPTION_VALUE = 3
 country_list = []
 power_levels = [0, 5, 10, 16]
 max_connections = [0, 1, 3, 5]
@@ -13,14 +14,9 @@ epsilon = 0.01  # chance of mutation
 alpha = 0.5  # learning rate
 gamma = 0.7  # discount factor
 
-'''
-To-do:
- - Retaliation for blockade and connection removal
- - Positive gain for blockade removal
-'''
-
 #  Standard Test: 10 countries, 100 turns, 100 games, 0.01 epsilon (0.99 decay rate)
-#  Best/Current model benchmarks: ~16 M (highest reserve), ~5 M (average reserve), 515 K (highest income per turn)
+#  Current model benchmarks: ~15 M (highest reserve), ~4.76 M (average reserve), ~487 K (highest income per turn)
+#  Best model benchmarks: ~16 M (highest reserve), ~5 M (average reserve), ~500 K (highest income per turn)
 
 
 def load_q_table(filename='q_table.json'):
@@ -48,6 +44,7 @@ class Countries:
         self.power_level = 1
         self.reserve = 0
         self.life_time_earning = 0
+        self.perception = [0] * COUNTRY_COUNT
 
         self.actions = (self.purchase_mine, self.purchase_town, self.purchase_connection, self.purchase_blockade,
                         self.remove_connection, self.remove_blockade, self.do_nothing)
@@ -84,6 +81,26 @@ class Countries:
         else:
             return income
 
+    def find_perception(self):
+        pre_perception = self.perception
+        self.perception = [0] * COUNTRY_COUNT
+        for country in country_list:
+            for connection in country.connections:
+                if connection[0] == self.name:
+                    self.perception[country.name] += 10 * connection[1]
+                    if connection[2]:
+                        self.perception[country.name] -= 15 + 5 * connection[1]
+
+        for connection in self.connections:
+            if connection[2]:
+                self.perception[connection[0]] += 5 * connection[1]
+            else:
+                self.perception[connection[0]] += 10 + 4 * connection[1]
+
+        for j, old_perception in enumerate(pre_perception):
+            if old_perception > self.perception[j]:
+                self.perception[j] -= 10
+
     def purchase_mine(self):
         mine_cost = 7
         first_mine_cost = 3
@@ -111,8 +128,8 @@ class Countries:
             reward = (-1, None)
             imports, blockaded = [], []
 
-            for other_country in country_list:
-                for connection in other_country.connections:
+            for country in country_list:
+                for connection in country.connections:
                     if connection[0] == self.name and not connection[2]:
                         imports.append(connection[0])
                         blockaded.append(connection[2])
@@ -129,7 +146,7 @@ class Countries:
 
                 if connection_level <= 3:
                     value = (4 * math.floor((importer.towns + importer.markets) / max(1, 6 - connection_level))) - connection_level * 6
-                    value += 10 if self.name in imports and not blockaded else 0
+                    value += PERCEPTION_VALUE * self.perception[importer_i]
                     reward = (value, importer.name) if value > reward[0] else reward
 
             if reward[1] is None:
@@ -181,19 +198,21 @@ class Countries:
             fallback_cut_score = float('-inf')
 
             for connection in self.connections:
-                other_country = country_list[connection[0]]
+                country = country_list[connection[0]]
 
-                estimated_income = (math.floor(other_country.mines / 2)
+                estimated_income = (math.floor(country.mines / 2)
                                     + math.floor((self.towns + self.markets) / max(1, 6 - connection[1]))
                                     + connection[1] * 3)  # Add value to AI losing from connection
 
-                if other_country.name not in connector_names:
+                estimated_income += -PERCEPTION_VALUE * self.perception[country_list[connection[0]].name]
+
+                if country.name not in connector_names:
                     if estimated_income > best_cut_score:
-                        best_cut = (other_country, connection)
+                        best_cut = (country, connection)
                         best_cut_score = estimated_income
                 else:
                     if estimated_income > fallback_cut_score:
-                        fallback_cut = (other_country, connection)
+                        fallback_cut = (country, connection)
                         fallback_cut_score = estimated_income
 
             selected = best_cut if best_cut else fallback_cut
@@ -206,10 +225,10 @@ class Countries:
         imports = []
 
         if self.reserve >= blockade_cost:
-            for other_country in country_list:
-                for connection in other_country.connections:
+            for country in country_list:
+                for connection in country.connections:
                     if connection[0] == self.name and not connection[2]:
-                        imports.append((other_country, connection))
+                        imports.append((country, connection))
 
             if imports:
                 if random_importer:
@@ -221,18 +240,20 @@ class Countries:
                     fallback_cut = None
                     fallback_cut_score = float('-inf')
 
-                    for other_country, connection in imports:
-                        estimated_income = (math.floor(other_country.mines / 2)
+                    for country, connection in imports:
+                        estimated_income = (math.floor(country.mines / 2)
                                             + math.floor((self.towns + self.markets) / max(1, 6 - connection[1]))
                                             + connection[1] * 3)  # Add value to AI losing from connection
 
-                        if other_country.name not in connector_names:
+                        estimated_income += -PERCEPTION_VALUE * self.perception[country.name]
+
+                        if country.name not in connector_names:
                             if estimated_income > best_cut_score:
-                                best_cut = (other_country, connection)
+                                best_cut = (country, connection)
                                 best_cut_score = estimated_income
                         else:
                             if estimated_income > fallback_cut_score:
-                                fallback_cut = (other_country, connection)
+                                fallback_cut = (country, connection)
                                 fallback_cut_score = estimated_income
 
                     selected = best_cut if best_cut else fallback_cut
@@ -245,7 +266,7 @@ class Countries:
                 self.reserve -= blockade_cost
 
     def remove_blockade(self, random_removal=False):  # Smart by default
-        blocked = [(other_country, connection) for other_country in country_list for connection in other_country.connections if
+        blocked = [(country, connection) for country in country_list for connection in country.connections if
                    connection[0] == self.name and connection[2]]
 
         if blocked:
@@ -258,18 +279,20 @@ class Countries:
                 fallback_blocked = None
                 fallback_blocked_score = float('inf')
 
-                for other_country, connection in blocked:
-                    estimated_income = (math.floor(other_country.mines / 2)
+                for country, connection in blocked:
+                    estimated_income = (math.floor(country.mines / 2)
                                         + math.floor((self.towns + self.markets) / max(1, 6 - connection[1]))
                                         + connection[1] * 3)  # Add value to AI losing from connection
 
-                    if other_country.name not in connector_names:
+                    estimated_income += PERCEPTION_VALUE * self.perception[country.name]
+
+                    if country.name not in connector_names:
                         if estimated_income < best_blocked_score:
-                            best_blocked = (other_country, connection)
+                            best_blocked = (country, connection)
                             best_blocked_score = estimated_income
                     else:
                         if estimated_income < fallback_blocked_score:
-                            fallback_blocked = (other_country, connection)
+                            fallback_blocked = (country, connection)
                             fallback_blocked_score = estimated_income
 
                 selected = best_blocked if best_blocked else fallback_blocked
@@ -345,7 +368,7 @@ class Countries:
         trade_value = sum(math.floor(country_list[c[0]].towns + country_list[c[0]].markets) / max(1, 6 - c[1]) for c in self.connections)
         connection_gain = (len(self.connections) - pre_connections)
 
-        reward = (10 * (post_income - pre_income) + 5 * connection_gain + 5 * self.mines + 4 * self.markets + trade_value * 0.1)
+        reward = 10 * (post_income - pre_income) + 6 * connection_gain + 5 * self.mines + self.markets
 
         if old_state not in q_table or len(q_table[old_state]) != num_of_actions:
             q_table[old_state] = [0] * num_of_actions
@@ -372,15 +395,18 @@ try:
 
         # Game loop
         for turn in range(TURNS):
-            for country in country_list:
-                country.find_power_level()
-                country.generate_money()
-                country.q_learning()
+            for nation in country_list:
+                nation.find_power_level()
+                nation.generate_money()
+                nation.find_perception()
+                nation.q_learning()
 
         epsilon = max(0.001, epsilon * DECAY_RATE)
         alpha = max(0.01, alpha * DECAY_RATE)
 
         print(country_list)
+        for nation in country_list:
+            print(country_list[nation.name].perception)
         print(f"Training {math.ceil(game / GAMES * 100)}% complete")
         save_q_table()
 

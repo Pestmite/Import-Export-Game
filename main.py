@@ -19,8 +19,8 @@ To-do:
  - Positive gain for blockade removal
 '''
 
-#  Standard Test: 10 countries, 100 turns, 100 games, 0.01 epsilon
-#  Best/Current model benchmarks: ~16 M (highest reserve), ~502 K (average reserve), 515 K (highest income per turn)
+#  Standard Test: 10 countries, 100 turns, 100 games, 0.01 epsilon (0.99 decay rate)
+#  Best/Current model benchmarks: ~16 M (highest reserve), ~5 M (average reserve), 515 K (highest income per turn)
 
 
 def load_q_table(filename='q_table.json'):
@@ -109,12 +109,13 @@ class Countries:
             importer = random.choice([j for j in range(COUNTRY_COUNT) if j != self.name])
         else:
             reward = (-1, None)
-            imports = []
+            imports, blockaded = [], []
 
             for other_country in country_list:
                 for connection in other_country.connections:
                     if connection[0] == self.name and not connection[2]:
                         imports.append(connection[0])
+                        blockaded.append(connection[2])
 
             for importer_i, importer in enumerate(country_list):
                 if importer_i == self.name:
@@ -128,7 +129,7 @@ class Countries:
 
                 if connection_level <= 3:
                     value = (4 * math.floor((importer.towns + importer.markets) / max(1, 6 - connection_level))) - connection_level * 6
-                    value += 10 if self.name in imports else 0
+                    value += 10 if self.name in imports and not blockaded else 0
                     reward = (value, importer.name) if value > reward[0] else reward
 
             if reward[1] is None:
@@ -329,7 +330,7 @@ class Countries:
                 self.actions[action_index]()
 
     # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
-    def q_learning(self, current_turn):
+    def q_learning(self):
         num_of_actions = len(self.actions)
         old_state = self.get_state()
         pre_income = self.generate_money(False)
@@ -341,7 +342,10 @@ class Countries:
         new_state = self.get_state()
         post_income = self.generate_money(False)
 
-        reward = 10 * (post_income - pre_income) + (len(self.connections) - pre_connections) * 7 + self.mines * 5
+        trade_value = sum(math.floor(country_list[c[0]].towns + country_list[c[0]].markets) / max(1, 6 - c[1]) for c in self.connections)
+        connection_gain = (len(self.connections) - pre_connections)
+
+        reward = (10 * (post_income - pre_income) + 5 * connection_gain + 5 * self.mines + 4 * self.markets + trade_value * 0.1)
 
         if old_state not in q_table or len(q_table[old_state]) != num_of_actions:
             q_table[old_state] = [0] * num_of_actions
@@ -371,7 +375,7 @@ try:
             for country in country_list:
                 country.find_power_level()
                 country.generate_money()
-                country.q_learning(turn)
+                country.q_learning()
 
         epsilon = max(0.001, epsilon * DECAY_RATE)
         alpha = max(0.01, alpha * DECAY_RATE)
@@ -394,5 +398,5 @@ except KeyboardInterrupt:
     pass
 
 print(q_table)
-print(f'Average reserve (highest): {total_reserve / 10000} ({highest_reserve})')
+print(f'Average reserve (highest): {total_reserve / 1000} ({highest_reserve})')
 print(f'Highest income per turn: {highest_income}')

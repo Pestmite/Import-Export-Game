@@ -131,7 +131,7 @@ class Countries:
         found_connection = None
 
         for connection in self.connections:
-            if connection[0] == country_list[importer].name:
+            if connection[0] == importer:
                 if connection[1] < max_connection_level:
                     found_connection = connection
                     connection_found = True
@@ -320,7 +320,7 @@ class Countries:
                 self.actions[action_index]()
 
     # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
-    def q_learning(self):
+    def q_learning(self, current_turn):
         num_of_actions = len(self.actions)
         old_state = self.get_state()
         pre_income = self.generate_money(False)
@@ -332,7 +332,7 @@ class Countries:
         new_state = self.get_state()
         post_income = self.generate_money(False)
 
-        reward = (post_income - pre_income) + (len(self.connections) - pre_connections) * 10 + self.mines
+        reward = (post_income - pre_income) + (len(self.connections) - pre_connections) * current_turn / 6 + self.mines * 5
 
         if old_state not in q_table or len(q_table[old_state]) != num_of_actions:
             q_table[old_state] = [0] * num_of_actions
@@ -350,36 +350,39 @@ games = 100
 highest_lte = 0
 highest_reserve = 0
 highest_income = 0
-for game in range(games):
-    country_list = []
+try:
+    for game in range(games):
+        country_list = []
 
-    # Setup
-    load_q_table()
-    for i in range(COUNTRY_COUNT):
-        country_list.append(Countries(i))
+        # Setup
+        load_q_table()
+        for i in range(COUNTRY_COUNT):
+            country_list.append(Countries(i))
 
-    # Game loop
-    for _ in range(100):
-        for country in country_list:
-            country.find_power_level()
-            country.generate_money()
-            country.q_learning()
+        # Game loop
+        for turn in range(100):
+            for country in country_list:
+                country.find_power_level()
+                country.generate_money()
+                country.q_learning(turn)
 
-    epsilon = max(0.01, epsilon * 0.99)
-    alpha = max(0.01, alpha * 0.99)
+        epsilon = max(0.01, epsilon * 0.99)
+        alpha = max(0.01, alpha * 0.99)
 
-    print(country_list)
-    print(f"{math.ceil(game / games * 100)}% complete")
-    save_q_table()
+        print(country_list)
+        print(f"{math.ceil(game / games * 100)}% complete")
+        save_q_table()
 
-    for i in range(len(country_list)):
-        if country_list[i].reserve > highest_reserve:
-            highest_reserve = country_list[i].reserve
+        for i in range(len(country_list)):
+            if country_list[i].reserve > highest_reserve:
+                highest_reserve = country_list[i].reserve
 
-    for i in range(len(country_list)):
-        country_income = country_list[i].generate_money(False)
-        if country_income > highest_income:
-            highest_income = country_income
+        for i in range(len(country_list)):
+            country_income = country_list[i].generate_money(False)
+            if country_income > highest_income:
+                highest_income = country_income
+except KeyboardInterrupt:
+    pass
 
 print(q_table)
 print(f'Most money in reserve: {highest_reserve}')

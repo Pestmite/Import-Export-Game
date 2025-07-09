@@ -10,15 +10,17 @@ max_connections = [0, 1, 3, 5]
 
 q_table = {}
 epsilon = 0.01  # chance of mutation
-alpha = 0.2  # learning rate
+alpha = 0.5  # learning rate
 gamma = 0.7  # discount factor
 
 '''
 To-do:
  - Retaliation for blockade and connection removal
- - Positive gain for connection and blockade removal
- - Fix market haywire
+ - Positive gain for blockade removal
 '''
+
+#  Standard Test: 10 countries, 100 turns, 100 games, 0.01 epsilon
+#  Best/Current model benchmarks: ~15 M (highest reserve), ~502 K (average reserve), 515 K (highest income per turn)
 
 
 def load_q_table(filename='q_table.json'):
@@ -107,6 +109,12 @@ class Countries:
             importer = random.choice([j for j in range(COUNTRY_COUNT) if j != self.name])
         else:
             reward = (-1, None)
+            imports = []
+
+            for other_country in country_list:
+                for connection in other_country.connections:
+                    if connection[0] == self.name and not connection[2]:
+                        imports.append(connection[0])
 
             for importer_i, importer in enumerate(country_list):
                 if importer_i == self.name:
@@ -120,6 +128,7 @@ class Countries:
 
                 if connection_level <= 3:
                     value = (4 * math.floor((importer.towns + importer.markets) / max(1, 6 - connection_level))) - connection_level * 6
+                    value += 10 if self.name in imports else 0
                     reward = (value, importer.name) if value > reward[0] else reward
 
             if reward[1] is None:
@@ -332,7 +341,7 @@ class Countries:
         new_state = self.get_state()
         post_income = self.generate_money(False)
 
-        reward = (post_income - pre_income) + (len(self.connections) - pre_connections) * current_turn / 6 + self.mines * 5
+        reward = 10 * (post_income - pre_income) + (len(self.connections) - pre_connections) * 7 + self.mines * 5
 
         if old_state not in q_table or len(q_table[old_state]) != num_of_actions:
             q_table[old_state] = [0] * num_of_actions
@@ -341,17 +350,15 @@ class Countries:
 
         old_value = q_table[old_state][action_index]
         future_estimate = max(q_table[new_state])
-        q_table[old_state][action_index] = old_value + alpha * (
-            reward + gamma * future_estimate - old_value
-        )
+        q_table[old_state][action_index] = old_value + alpha * (reward + gamma * future_estimate - old_value)
 
 
-games = 100
-highest_lte = 0
-highest_reserve = 0
-highest_income = 0
+GAMES = 100
+TURNS = 100
+DECAY_RATE = 0.99
+highest_lte, highest_reserve, highest_income, total_reserve = 0, 0, 0, 0
 try:
-    for game in range(games):
+    for game in range(GAMES):
         country_list = []
 
         # Setup
@@ -360,20 +367,21 @@ try:
             country_list.append(Countries(i))
 
         # Game loop
-        for turn in range(100):
+        for turn in range(TURNS):
             for country in country_list:
                 country.find_power_level()
                 country.generate_money()
                 country.q_learning(turn)
 
-        epsilon = max(0.01, epsilon * 0.99)
-        alpha = max(0.01, alpha * 0.99)
+        epsilon = max(0.001, epsilon * DECAY_RATE)
+        alpha = max(0.01, alpha * DECAY_RATE)
 
         print(country_list)
-        print(f"{math.ceil(game / games * 100)}% complete")
+        print(f"Training {math.ceil(game / GAMES * 100)}% complete")
         save_q_table()
 
         for i in range(len(country_list)):
+            total_reserve += country_list[i].reserve
             if country_list[i].reserve > highest_reserve:
                 highest_reserve = country_list[i].reserve
 
@@ -381,9 +389,10 @@ try:
             country_income = country_list[i].generate_money(False)
             if country_income > highest_income:
                 highest_income = country_income
+
 except KeyboardInterrupt:
     pass
 
 print(q_table)
-print(f'Most money in reserve: {highest_reserve}')
+print(f'Average reserve (highest): {total_reserve / 10000} ({highest_reserve})')
 print(f'Highest income per turn: {highest_income}')

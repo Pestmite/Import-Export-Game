@@ -20,7 +20,7 @@ To-do:
 '''
 
 #  Standard Test: 10 countries, 100 turns, 100 games, 0.01 epsilon
-#  Best/Current model benchmarks: ~15 M (highest reserve), ~502 K (average reserve), 515 K (highest income per turn)
+#  Best/Current model benchmarks: ~16 M (highest reserve), ~502 K (average reserve), 515 K (highest income per turn)
 
 
 def load_q_table(filename='q_table.json'):

@@ -14,8 +14,17 @@ epsilon = 0.01  # chance of mutation
 alpha = 0.5  # learning rate
 gamma = 0.7  # discount factor
 
-#  Standard Test: 10 countries, 100 turns, 100 games, 0.01 epsilon (0.99 decay rate)
-#  Current model benchmarks: ~15 M (highest reserve), ~4.76 M (average reserve), ~487 K (highest income per turn)
+'''
+To-Do list:
+    - Get to 25 M SBT
+    - Survive pile on
+    
+    - Create playable character
+    - Vary strategies
+'''
+
+#  Standard Benchmarking Test: 10 countries, 100 turns, 100 games, 0.01 epsilon (0.99 decay rate)
+#  Current model benchmarks: ~12 M (highest reserve), ~4.34 M (average reserve), ~452 K (highest income per turn)
 #  Best model benchmarks: ~16 M (highest reserve), ~5 M (average reserve), ~500 K (highest income per turn)
 
 
@@ -45,7 +54,6 @@ class Countries:
         self.reserve = 0
         self.life_time_earning = 0
         self.perception = [0] * COUNTRY_COUNT
-
         self.actions = (self.purchase_mine, self.purchase_town, self.purchase_connection, self.purchase_blockade,
                         self.remove_connection, self.remove_blockade, self.do_nothing)
 
@@ -126,7 +134,7 @@ class Countries:
             importer = random.choice([j for j in range(COUNTRY_COUNT) if j != self.name])
         else:
             reward = (-1, None)
-            imports, blockaded = [], []
+            imports, blockaded, reward_list = [], [], []
 
             for country in country_list:
                 for connection in country.connections:
@@ -147,11 +155,15 @@ class Countries:
                 if connection_level <= 3:
                     value = (4 * math.floor((importer.towns + importer.markets) / max(1, 6 - connection_level))) - connection_level * 6
                     value += PERCEPTION_VALUE * self.perception[importer_i]
-                    reward = (value, importer.name) if value > reward[0] else reward
+                    if value >= reward[0]:
+                        if value > reward[0]:
+                            reward_list = []
+                            reward = (value, importer.name)
+                        reward_list.append((value, importer.name))
 
             if reward[1] is None:
                 return
-            importer = reward[1]
+            importer = reward_list[random.randint(0, len(reward_list) - 1)][1]
 
         connection_found = False
         connection_level = 1
@@ -192,10 +204,8 @@ class Countries:
             self.connections.pop(random.randint(0, len(self.connections) - 1))
         else:
             connector_names = {conn[0] for conn in self.connections}
-            best_cut = None
-            best_cut_score = float('-inf')
-            fallback_cut = None
-            fallback_cut_score = float('-inf')
+            best_cut_score, fallback_cut_score = float('-inf'), float('-inf')
+            best_cut_list, fallback_cut_list = [], []
 
             for connection in self.connections:
                 country = country_list[connection[0]]
@@ -207,15 +217,22 @@ class Countries:
                 estimated_income += -PERCEPTION_VALUE * self.perception[country_list[connection[0]].name]
 
                 if country.name not in connector_names:
-                    if estimated_income > best_cut_score:
-                        best_cut = (country, connection)
-                        best_cut_score = estimated_income
+                    if estimated_income >= best_cut_score:
+                        if estimated_income == best_cut_score:
+                            best_cut_list = []
+                        else:
+                            best_cut_score = estimated_income
+                        best_cut_list.append(country.name)
                 else:
-                    if estimated_income > fallback_cut_score:
-                        fallback_cut = (country, connection)
-                        fallback_cut_score = estimated_income
+                    if estimated_income >= fallback_cut_score:
+                        if estimated_income == best_cut_score:
+                            fallback_cut_list = []
+                        else:
+                            fallback_cut_score = estimated_income
+                        fallback_cut_list.append(country.name)
 
-            selected = best_cut if best_cut else fallback_cut
+            selected = country_list[best_cut_list[random.randint(0, len(best_cut_list) - 1)]] if len(best_cut_list) else (
+                country_list)[fallback_cut_list[random.randint(0, len(fallback_cut_list) - 1)]]
             if not selected:
                 return
             self.connections = [c for c in self.connections if c[0] != selected]
@@ -235,10 +252,9 @@ class Countries:
                     target_country, selected_connection = random.choice(imports)
                 else:
                     connector_names = {conn[0] for conn in self.connections}
-                    best_cut = None
-                    best_cut_score = float('-inf')
-                    fallback_cut = None
-                    fallback_cut_score = float('-inf')
+                    best_cut, fallback_cut = None, None
+                    fallback_cut_score, best_cut_score = float('-inf'), float('-inf')
+                    best_cut_list, fallback_cut_list = [], []
 
                     for country, connection in imports:
                         estimated_income = (math.floor(country.mines / 2)
@@ -248,15 +264,24 @@ class Countries:
                         estimated_income += -PERCEPTION_VALUE * self.perception[country.name]
 
                         if country.name not in connector_names:
-                            if estimated_income > best_cut_score:
-                                best_cut = (country, connection)
-                                best_cut_score = estimated_income
+                            if estimated_income >= best_cut_score:
+                                if estimated_income == best_cut_score:
+                                    best_cut_list = []
+                                else:
+                                    best_cut = (country, connection)
+                                    best_cut_score = estimated_income
+                                best_cut_list.append(best_cut)
                         else:
-                            if estimated_income > fallback_cut_score:
-                                fallback_cut = (country, connection)
-                                fallback_cut_score = estimated_income
+                            if estimated_income >= fallback_cut_score:
+                                if estimated_income == best_cut_score:
+                                    fallback_cut_list = []
+                                else:
+                                    fallback_cut = (country, connection)
+                                    fallback_cut_score = estimated_income
+                                fallback_cut_list.append(fallback_cut)
 
-                    selected = best_cut if best_cut else fallback_cut
+                    selected = best_cut_list[random.randint(0, len(best_cut_list) - 1)] if len(best_cut_list) else (
+                        fallback_cut_list[random.randint(0, len(fallback_cut_list) - 1)])
                     if not selected:
                         return
                     target_country, selected_connection = selected
@@ -274,10 +299,8 @@ class Countries:
                 target_country, selected_connection = random.choice(blocked)
             else:
                 connector_names = {conn[0] for conn in self.connections}
-                best_blocked = None
-                best_blocked_score = float('inf')
-                fallback_blocked = None
-                fallback_blocked_score = float('inf')
+                best_blocked_score, fallback_blocked_score = float('inf'), float('-inf')
+                best_blocked_list, fallback_blocked_list = [], []
 
                 for country, connection in blocked:
                     estimated_income = (math.floor(country.mines / 2)
@@ -287,16 +310,24 @@ class Countries:
                     estimated_income += PERCEPTION_VALUE * self.perception[country.name]
 
                     if country.name not in connector_names:
-                        if estimated_income < best_blocked_score:
-                            best_blocked = (country, connection)
+                        if estimated_income > best_blocked_score:
                             best_blocked_score = estimated_income
-                    else:
-                        if estimated_income < fallback_blocked_score:
-                            fallback_blocked = (country, connection)
-                            fallback_blocked_score = estimated_income
+                            best_blocked_list = [(country, connection)]
+                        elif estimated_income == best_blocked_score:
+                            best_blocked_list.append((country, connection))
 
-                selected = best_blocked if best_blocked else fallback_blocked
-                if not selected:
+                    else:
+                        if estimated_income > fallback_blocked_score:
+                            fallback_blocked_score = estimated_income
+                            fallback_blocked_list = [(country, connection)]
+                        elif estimated_income == fallback_blocked_score:
+                            fallback_blocked_list.append((country, connection))
+
+                if best_blocked_list:
+                    selected = random.choice(best_blocked_list)
+                elif fallback_blocked_list:
+                    selected = random.choice(fallback_blocked_list)
+                else:
                     return
                 target_country, selected_connection = selected
 
@@ -364,8 +395,6 @@ class Countries:
 
         new_state = self.get_state()
         post_income = self.generate_money(False)
-
-        trade_value = sum(math.floor(country_list[c[0]].towns + country_list[c[0]].markets) / max(1, 6 - c[1]) for c in self.connections)
         connection_gain = (len(self.connections) - pre_connections)
 
         reward = 10 * (post_income - pre_income) + 6 * connection_gain + 5 * self.mines + self.markets
@@ -405,8 +434,6 @@ try:
         alpha = max(0.01, alpha * DECAY_RATE)
 
         print(country_list)
-        for nation in country_list:
-            print(country_list[nation.name].perception)
         print(f"Training {math.ceil(game / GAMES * 100)}% complete")
         save_q_table()
 

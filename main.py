@@ -24,7 +24,7 @@ To-Do list:
 '''
 
 #  Standard Benchmarking Test: 10 countries, 100 turns, 100 games, 0.01 epsilon (0.99 decay rate)
-#  Current model benchmarks: ~12 M (highest reserve), ~4.34 M (average reserve), ~452 K (highest income per turn)
+#  Current model benchmarks: ~12 M (highest reserve), ~4.23 M (average reserve), ~547 K (highest income per turn)
 #  Best model benchmarks: ~16 M (highest reserve), ~5 M (average reserve), ~500 K (highest income per turn)
 
 
@@ -350,20 +350,19 @@ class Countries:
     def can_afford_anything(self):
         return self.reserve >= self.power_level or self.reserve >= (3 if self.mines == 0 else 7) or self.reserve >= 3
 
-    def get_state(self):
-        max_mine_level = 10
-        mine_level_incr = 5
-        max_money_level = 5
-        money_level_incr = 25
+    def get_state(self, turn):
+        max_money_level = 8
+        max_turn_level = 10
+        turn_level_incr = 20
 
-        mine_level = min(self.mines // mine_level_incr, max_mine_level - 1) + 1
-        money_level = max((min(self.reserve // money_level_incr, max_money_level - 1) + 1), 0)
+        money_level = min(int(max(0, self.reserve) ** (1/2) / 5) + 1, max_money_level)
+        turn_level = min(turn // turn_level_incr, max_turn_level - 1) + 1
 
-        return self.power_level, mine_level, money_level, len(self.connections)
+        return self.power_level, money_level, len(self.connections), turn_level
 
-    def choose_action(self):
+    def choose_action(self, turn):
         num_of_actions = len(self.actions)
-        state = self.get_state()
+        state = self.get_state(turn)
 
         if state not in q_table or len(q_table[state]) != num_of_actions:
             q_table[state] = [0] * num_of_actions
@@ -374,30 +373,29 @@ class Countries:
             # lambda function loops through all the q_table values to find the highest one
             return max(range(num_of_actions), key=lambda j: q_table[state][j])
 
-    def execute_actions(self):
+    def execute_actions(self, turn):
         while self.can_afford_anything():
-            action_index = self.choose_action()
-
-            if action_index == 6:
+            action_index = self.choose_action(turn)
+            if action_index == self.actions.index(self.do_nothing):
                 break
             else:
                 self.actions[action_index]()
 
     # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
-    def q_learning(self):
+    def q_learning(self, turn):
         num_of_actions = len(self.actions)
-        old_state = self.get_state()
+        old_state = self.get_state(turn)
         pre_income = self.generate_money(False)
         pre_connections = len(self.connections)
 
-        action_index = self.choose_action()
-        self.execute_actions()
+        action_index = self.choose_action(turn)
+        self.execute_actions(turn)
 
-        new_state = self.get_state()
+        new_state = self.get_state(turn)
         post_income = self.generate_money(False)
         connection_gain = (len(self.connections) - pre_connections)
 
-        reward = 10 * (post_income - pre_income) + 6 * connection_gain + 5 * self.mines + self.markets
+        reward = 10 * (post_income - pre_income) + 7 * connection_gain + 5 * self.mines
 
         if old_state not in q_table or len(q_table[old_state]) != num_of_actions:
             q_table[old_state] = [0] * num_of_actions
@@ -423,12 +421,12 @@ try:
             country_list.append(Countries(i))
 
         # Game loop
-        for turn in range(TURNS):
+        for current_turn in range(TURNS):
             for nation in country_list:
                 nation.find_power_level()
                 nation.generate_money()
                 nation.find_perception()
-                nation.q_learning()
+                nation.q_learning(current_turn)
 
         epsilon = max(0.001, epsilon * DECAY_RATE)
         alpha = max(0.01, alpha * DECAY_RATE)
@@ -453,3 +451,8 @@ except KeyboardInterrupt:
 print(q_table)
 print(f'Average reserve (highest): {total_reserve / 1000} ({highest_reserve})')
 print(f'Highest income per turn: {highest_income}')
+if highest_reserve >= 25000000:
+    print("🎉 GOAL REACHED: 25M+ reserve")
+else:
+    print("❌ GOAL NOT MET")
+

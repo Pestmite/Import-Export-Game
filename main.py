@@ -21,7 +21,7 @@ To-Do list:
 '''
 
 #  Standard Benchmarking Test: 10 countries, 100 turns, 100 games, 0.01 epsilon (0.99 decay rate)
-#  Current/Best model benchmarks: ~1.02 B (highest reserve), ~176 M (average reserve), ~60.1 M (highest income per turn)
+#  Current/Best model benchmarks: ~4.52 B (highest reserve), ~1.54 B (average reserve), ~186 M (highest income per turn)
 
 
 def load_q_table(filename='q_table.json'):
@@ -111,9 +111,12 @@ class Countries:
 
         cost = first_mine_cost if self.mines == 0 else mine_cost
 
-        if self.reserve >= cost * turn * 2:
-            self.reserve -= cost * turn * 2
-            self.mines += turn * 2
+        if self.reserve >= cost * turn * 5 and turn > 10:
+            self.reserve -= cost * turn * 5
+            self.mines += turn * 5
+        elif self.reserve >= cost:
+            self.reserve -= cost
+            self.mines += turn
 
     def purchase_town(self):
         town_cost = self.power_level

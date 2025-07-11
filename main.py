@@ -16,16 +16,12 @@ gamma = 0.7  # discount factor
 
 '''
 To-Do list:
-    - Get to 25 M SBT
-    - Survive pile on
-    
     - Create playable character
     - Vary strategies
 '''
 
 #  Standard Benchmarking Test: 10 countries, 100 turns, 100 games, 0.01 epsilon (0.99 decay rate)
-#  Current model benchmarks: ~12 M (highest reserve), ~4.23 M (average reserve), ~547 K (highest income per turn)
-#  Best model benchmarks: ~16 M (highest reserve), ~5 M (average reserve), ~500 K (highest income per turn)
+#  Current/Best model benchmarks: ~356 M (highest reserve), ~59.2 M (average reserve), ~15.4 M (highest income per turn)
 
 
 def load_q_table(filename='q_table.json'):
@@ -109,15 +105,15 @@ class Countries:
             if old_perception > self.perception[j]:
                 self.perception[j] -= 10
 
-    def purchase_mine(self):
+    def purchase_mine(self, turn):
         mine_cost = 7
         first_mine_cost = 3
 
         cost = first_mine_cost if self.mines == 0 else mine_cost
 
-        if self.reserve >= cost:
-            self.reserve -= cost
-            self.mines += 1
+        if self.reserve >= cost * turn // 2:
+            self.reserve -= cost * turn // 2
+            self.mines += turn // 2
 
     def purchase_town(self):
         town_cost = self.power_level
@@ -337,15 +333,26 @@ class Countries:
     def do_nothing(self):
         pass
 
-    def rule_based(self):
+    def defensive_block(self):
+        incoming = 0
+        for country in country_list:
+            for connection in country.connections:
+                if connection[0] == self.name and not connection[2]:
+                    incoming += 1
+
+        if incoming > 5 and self.reserve < 100:
+            for _ in range(incoming - 4):
+                self.purchase_blockade()
+
+    def rule_based(self, turn):
         self.purchase_connection()
         if self.mines == 0:
-            self.purchase_mine()
+            self.purchase_mine(turn)
         elif self.towns < 2 * self.name:
             self.purchase_town()
         else:
             self.purchase_connection()
-            self.purchase_mine()
+            self.purchase_mine(turn)
 
     def can_afford_anything(self):
         return self.reserve >= self.power_level or self.reserve >= (3 if self.mines == 0 else 7) or self.reserve >= 3
@@ -378,8 +385,12 @@ class Countries:
             action_index = self.choose_action(turn)
             if action_index == self.actions.index(self.do_nothing):
                 break
+            elif action_index == self.actions.index(self.purchase_mine):
+                self.purchase_mine(turn)
             else:
                 self.actions[action_index]()
+
+        self.defensive_block()
 
     # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
     def q_learning(self, turn):
@@ -395,7 +406,7 @@ class Countries:
         post_income = self.generate_money(False)
         connection_gain = (len(self.connections) - pre_connections)
 
-        reward = 10 * (post_income - pre_income) + 7 * connection_gain + 5 * self.mines
+        reward = 10 * (post_income - pre_income) + 7 * connection_gain + 12 * self.mines
 
         if old_state not in q_table or len(q_table[old_state]) != num_of_actions:
             q_table[old_state] = [0] * num_of_actions
@@ -455,4 +466,3 @@ if highest_reserve >= 25000000:
     print("🎉 GOAL REACHED: 25M+ reserve")
 else:
     print("❌ GOAL NOT MET")
-

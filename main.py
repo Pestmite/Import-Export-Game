@@ -111,13 +111,11 @@ class Countries:
         income_percentage = min((0.01 * (100 - turn) * 3), 1)
         mines_purchased = self.reserve * income_percentage // mine_cost
 
-        cost = first_mine_cost if self.mines == 0 else mine_cost
-
         if turn > 1:
             self.reserve -= mines_purchased * mine_cost
             self.mines += mines_purchased
-        elif self.reserve >= cost:
-            self.reserve -= cost
+        elif self.reserve >= first_mine_cost:
+            self.reserve -= first_mine_cost
             self.mines += 1
 
     def purchase_town(self):

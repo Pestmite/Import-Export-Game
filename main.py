@@ -126,7 +126,7 @@ class Countries:
         else:
             while True:
                 try:
-                    if self.mines == 0 and self.reserve < first_mine_cost or self.reserve < mine_cost:
+                    if (self.mines == 0 and self.reserve < first_mine_cost) or (self.mines and self.reserve < mine_cost):
                         print('You can\'t afford any mines')
                         break
                     mines_purchased = int(input('How many mines would you like to purchase? '))
@@ -161,6 +161,16 @@ class Countries:
 
         if random_importer:
             importer = random.choice([j for j in range(COUNTRY_COUNT) if j != self.name])
+        elif self.player:
+            while True:
+                try:
+                    importer = int(input(f'Choose a connection: '))
+                    if 0 <= importer < len(country_list) - 1 and importer != self.name:
+                        break
+                    else:
+                        print('Index out of range.')
+                except ValueError:
+                    print('Please enter a number.')
         else:
             reward = (-1, None)
             imports, blockaded, reward_list = [], [], []
@@ -455,6 +465,10 @@ class Countries:
             print('\nPurchase a Mine, Purchase a Town, Purchase a Connection, Purchase a Blockade, '
                   'Remove a Connection, Remove a Blockade, End Your Turn')
             try:
+                self.find_power_level()
+                print(f'Your reserve: {self.reserve} coin     Your Power level: {self.power_level}')
+                print(f'You have {self.towns + self.markets} towns (including {self.markets} markets), {self.mines} mines, '
+                      f'and {len(self.connections)} connections {[f'Player {connection[0]}' for connection in self.connections]}')
                 action = int(input(f'Player {self.name}, choose an action from this list by entering it\'s position: '))
                 action -= 1
                 if 0 <= action < len(self.actions) - 1:
@@ -484,11 +498,11 @@ try:
         # Game loop
         for current_turn in range(TURNS):
             for nation in country_list:
-                nation.find_power_level()
                 nation.generate_money()
                 if nation.player:
                     nation.play_turn()
                 else:
+                    nation.find_power_level()
                     nation.find_perception()
                     nation.q_learning(current_turn)
 

@@ -163,6 +163,7 @@ class Countries:
             importer = random.choice([j for j in range(COUNTRY_COUNT) if j != self.name])
         elif self.player:
             while True:
+                self.competitor_info()
                 try:
                     importer = int(input(f'Choose a connection: '))
                     if 0 <= importer < len(country_list) - 1 and importer != self.name:
@@ -235,12 +236,31 @@ class Countries:
 
             self.reserve -= cost
 
+        elif self.player:
+            if self.reserve <= cost:
+                print('You can\'t afford a connection!')
+            else:
+                print(f'You maxed out connection for power level {self.power_level}')
+
     def remove_connection(self, random_importer=False):
         if not self.connections:
+            if self.player:
+                print('You don\'t have any connections to remove')
             return
 
         if random_importer:
             self.connections.pop(random.randint(0, len(self.connections) - 1))
+        elif self.player:
+            while True:
+                self.competitor_info()
+                try:
+                    importer = int(input(f'Choose a connection to remove (by index): '))
+                    if 0 <= importer < len(self.connections) - 1:
+                        self.connections.pop(importer)
+                    else:
+                        print('Index out of range.')
+                except ValueError:
+                    print('Please enter a number.')
         else:
             connector_names = {conn[0] for conn in self.connections}
             best_cut_score, fallback_cut_score = float('-inf'), float('-inf')
@@ -289,6 +309,18 @@ class Countries:
             if imports:
                 if random_importer:
                     target_country, selected_connection = random.choice(imports)
+                elif self.player:
+                    while True:
+                        self.competitor_info()
+                        try:
+                            index = int(input(f'Choose a connection to blockade (by index): '))
+                            if 0 <= index < len(self.connections) - 1:
+                                target_country, selected_connection = imports[index]
+                                break
+                            else:
+                                print('Index out of range.')
+                        except ValueError:
+                            print('Please enter a number.')
                 else:
                     connector_names = {conn[0] for conn in self.connections}
                     best_cut, fallback_cut = None, None
@@ -329,6 +361,12 @@ class Countries:
                 target_country.markets = max(0, (target_country.markets - selected_connection[1]))
                 self.reserve -= blockade_cost
 
+            elif self.player:
+                print('You have no connections')
+
+        elif self.player:
+            print('You don\'t have enough money')
+
     def remove_blockade(self, random_removal=False):  # Smart by default
         blocked = [(country, connection) for country in country_list for connection in country.connections if
                    connection[0] == self.name and connection[2]]
@@ -336,6 +374,18 @@ class Countries:
         if blocked:
             if random_removal:
                 target_country, selected_connection = random.choice(blocked)
+            elif self.player:
+                while True:
+                    self.competitor_info()
+                    try:
+                        index = int(input(f'Choose a blockade to remove (by index): '))
+                        if 0 <= index < len(self.connections) - 1:
+                            target_country, selected_connection = blocked[index]
+                            break
+                        else:
+                            print('Index out of range.')
+                    except ValueError:
+                        print('Please enter a number.')
             else:
                 connector_names = {conn[0] for conn in self.connections}
                 best_blocked_score, fallback_blocked_score = float('inf'), float('-inf')
@@ -372,6 +422,9 @@ class Countries:
 
             selected_connection[2] = False
             target_country.markets += selected_connection[1]
+
+        elif self.player:
+            print('You have no blockades')
 
     def do_nothing(self):
         pass
@@ -434,6 +487,7 @@ class Countries:
                 self.actions[action_index]()
 
         self.defensive_block()
+        self.find_power_level()
 
     # Q(s,a)←Q(s,a)+α⋅[r+γ⋅a′maxQ(s′,a′)−Q(s,a)]
     def q_learning(self, turn):
@@ -460,15 +514,34 @@ class Countries:
         future_estimate = max(q_table[new_state])
         q_table[old_state][action_index] = old_value + alpha * (reward + gamma * future_estimate - old_value)
 
-    def play_turn(self):
+    def competitor_info(self):
+        print('Here is a list of nations with their information:')
+        for country in country_list:
+            if self == country:
+                print(f'Player {country.name} (YOU) - Town count: {country.towns}, Mine count: {country.mines}, Power level: '
+                      f'{country.power_level}, Reserve: {country.reserve}, Connections: '
+                      f'{[f'Player {connection[0]} {'(YOU) (' if connection[0] == self.name else ' ('}level {connection[1]}'
+                          f'{' and BLOCKED)' if connection[2] else ')'}' for connection in country.connections]}')
+            else:
+                print(f'Player {country.name} - Town count: {country.towns}, Mine count: {country.mines}, Power level: '
+                      f'{country.power_level}, Connections: {[f'Player {connection[0]} '
+                                                             f'{'(YOU) (' if connection[0] == self.name else ' ('}level {connection[1]}'
+                                                              f'{' and BLOCKED)' if connection[2] else ')'}' 
+                                                              for connection in country.connections]}')
+
+    def play_turn(self, turn, total_turns):
         while True:
             print('\nPurchase a Mine, Purchase a Town, Purchase a Connection, Purchase a Blockade, '
                   'Remove a Connection, Remove a Blockade, End Your Turn')
             try:
                 self.find_power_level()
-                print(f'Your reserve: {self.reserve} coin     Your Power level: {self.power_level}')
-                print(f'You have {self.towns + self.markets} towns (including {self.markets} markets), {self.mines} mines, '
-                      f'and {len(self.connections)} connections {[f'Player {connection[0]}' for connection in self.connections]}')
+                print(f'Your reserve: {self.reserve} coin       Current turn: {turn + 1} / {total_turns}     '
+                      f'Your Power level: {self.power_level}')
+                print(f'Your town count: {self.towns + self.markets} ({self.towns} towns and {self.markets} markets)      '
+                      f'Your mine count: {self.mines}')
+                print(f'Your Connections ({len(self.connections)}): {[f'Player {connection[0]} '
+                                                                      f'(level {connection[1]} {' and BLOCKED)' if connection[2] else ')'}' 
+                                                                      for connection in self.connections]}')
                 action = int(input(f'Player {self.name}, choose an action from this list by entering it\'s position: '))
                 action -= 1
                 if 0 <= action < len(self.actions) - 1:
@@ -500,9 +573,8 @@ try:
             for nation in country_list:
                 nation.generate_money()
                 if nation.player:
-                    nation.play_turn()
+                    nation.play_turn(current_turn, TURNS)
                 else:
-                    nation.find_power_level()
                     nation.find_perception()
                     nation.q_learning(current_turn)
 

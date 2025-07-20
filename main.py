@@ -53,6 +53,10 @@ class Countries:
         self.actions = (self.purchase_mine, self.purchase_town, self.purchase_connection, self.purchase_blockade,
                         self.remove_connection, self.remove_blockade, self.do_nothing)
 
+        self.player = False
+        if index == 0:
+            self.player = True
+
     def __repr__(self):
         return (f"\n{self.name} = Towns: {self.towns} + {self.markets} ({self.power_level}), "
                 f"Mines: {self.mines}, Connections: {self.connections}, Money: {self.reserve} ({self.life_time_earning})")
@@ -105,18 +109,44 @@ class Countries:
             if old_perception > self.perception[j]:
                 self.perception[j] -= 10
 
-    def purchase_mine(self, turn):
+    def purchase_mine(self, turn=-1):
         mine_cost = 7
         first_mine_cost = 3
-        income_percentage = min((0.01 * (100 - turn) * 3), 1)
-        mines_purchased = self.reserve * income_percentage // mine_cost
 
-        if turn > 1:
-            self.reserve -= mines_purchased * mine_cost
-            self.mines += mines_purchased
-        elif self.reserve >= first_mine_cost:
-            self.reserve -= first_mine_cost
-            self.mines += 1
+        if turn >= 0:
+            income_percentage = min((0.01 * (100 - turn) * 3), 1)
+            mines_purchased = self.reserve * income_percentage // mine_cost
+
+            if self.mines > 1:
+                self.reserve -= mines_purchased * mine_cost
+                self.mines += mines_purchased
+            elif self.reserve >= first_mine_cost:
+                self.reserve -= first_mine_cost
+                self.mines += 1
+        else:
+            while True:
+                try:
+                    if self.mines == 0 and self.reserve < first_mine_cost or self.reserve < mine_cost:
+                        print('You can\'t afford any mines')
+                        break
+                    mines_purchased = int(input('How many mines would you like to purchase? '))
+                    if self.mines == 0:
+                        if self.reserve >= (mines_purchased - 1) * mine_cost + first_mine_cost:
+                            self.reserve -= (mines_purchased - 1) * mine_cost + first_mine_cost
+                            self.mines += mines_purchased
+                            break
+                        else:
+                            print('You can\'t afford that.')
+                    else:
+                        if self.reserve >= mines_purchased * mine_cost:
+                            self.reserve -= mines_purchased * mine_cost
+                            self.mines += mines_purchased
+                            break
+                        else:
+                            print('You can\'t afford that.')
+
+                except ValueError:
+                    print('Please enter a number.')
 
     def purchase_town(self):
         town_cost = self.power_level
@@ -420,6 +450,23 @@ class Countries:
         future_estimate = max(q_table[new_state])
         q_table[old_state][action_index] = old_value + alpha * (reward + gamma * future_estimate - old_value)
 
+    def play_turn(self):
+        while True:
+            print('\nPurchase a Mine, Purchase a Town, Purchase a Connection, Purchase a Blockade, '
+                  'Remove a Connection, Remove a Blockade, End Your Turn')
+            try:
+                action = int(input(f'Player {self.name}, choose an action from this list by entering it\'s position: '))
+                action -= 1
+                if 0 <= action < len(self.actions) - 1:
+                    self.actions[action]()
+                elif action == len(self.actions) - 1:
+                    print('Turn Ended')
+                    break
+                else:
+                    print('Index out of range.')
+            except ValueError:
+                print('Please enter a number.')
+
 
 GAMES = 100
 TURNS = 100
@@ -439,8 +486,11 @@ try:
             for nation in country_list:
                 nation.find_power_level()
                 nation.generate_money()
-                nation.find_perception()
-                nation.q_learning(current_turn)
+                if nation.player:
+                    nation.play_turn()
+                else:
+                    nation.find_perception()
+                    nation.q_learning(current_turn)
 
         epsilon = max(0.001, epsilon * DECAY_RATE)
         alpha = max(0.01, alpha * DECAY_RATE)

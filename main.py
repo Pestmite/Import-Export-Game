@@ -5,9 +5,11 @@ import ast
 
 COUNTRY_COUNT = 10
 PERCEPTION_VALUE = 3
+POWER_LEVELS = [0, 5, 10, 16]
+MAX_CONNECTIONS = [0, 1, 3, 5]
+PLAYERS = []  # All player indexes (can be empty)
+
 country_list = []
-power_levels = [0, 5, 10, 16]
-max_connections = [0, 1, 3, 5]
 
 q_table = {}
 epsilon = 0.01  # chance of mutation
@@ -16,7 +18,6 @@ gamma = 0.7  # discount factor
 
 '''
 To-Do list:
-    - Create playable character
     - Vary strategies
 '''
 
@@ -54,7 +55,7 @@ class Countries:
                         self.remove_connection, self.remove_blockade, self.do_nothing)
 
         self.player = False
-        if index == 0:
+        if index in PLAYERS:
             self.player = True
 
     def __repr__(self):
@@ -62,7 +63,7 @@ class Countries:
                 f"Mines: {self.mines}, Connections: {self.connections}, Money: {self.reserve} ({self.life_time_earning})")
 
     def find_power_level(self):
-        for level, min_towns in enumerate(power_levels):
+        for level, min_towns in enumerate(POWER_LEVELS):
             if (self.towns + self.markets) >= min_towns:
                 self.power_level = level + 1
 
@@ -151,9 +152,27 @@ class Countries:
     def purchase_town(self):
         town_cost = self.power_level
 
-        if self.reserve >= town_cost:
+        if self.reserve >= town_cost and self.power_level == len(POWER_LEVELS) and self.player:
+            while True:
+                try:
+                    towns_purchased = int(input('How many towns would you like to purchase? '))
+                    if towns_purchased * town_cost <= self.reserve:
+                        self.reserve -= towns_purchased * town_cost
+                        self.towns += towns_purchased
+                        break
+                    else:
+                        print('You can\'t afford that')
+
+                except ValueError:
+                    print('Please enter a number')
+
+        elif self.reserve >= town_cost:
             self.reserve -= town_cost
             self.towns += 1
+            if self.player:
+                print('Town purchased')
+        elif self.player:
+            print('You can\'t afford that!')
 
     def purchase_connection(self, random_importer=False):
         max_connection_level = 3
@@ -163,10 +182,9 @@ class Countries:
             importer = random.choice([j for j in range(COUNTRY_COUNT) if j != self.name])
         elif self.player:
             while True:
-                self.competitor_info()
                 try:
                     importer = int(input(f'Choose a connection: '))
-                    if 0 <= importer < len(country_list) - 1 and importer != self.name:
+                    if 0 <= importer < len(country_list) and importer != self.name:
                         break
                     else:
                         print('Index out of range.')
@@ -221,13 +239,16 @@ class Countries:
 
         connection_cost = 6 * connection_level
         cost = first_connection_cost if len(self.connections) == 0 else connection_cost
-        if self.reserve >= cost and len(self.connections) + 1 <= max_connections[self.power_level - 1]:
+        if self.reserve >= cost:
             if connection_found:
                 found_connection[1] += 1
 
-            else:
+            elif len(self.connections) + 1 <= MAX_CONNECTIONS[self.power_level - 1]:
                 # [country_index, connection_level, is_blocked]
                 self.connections.append([country_list[importer].name, 1, False])
+
+            elif self.player:
+                print(f'You maxed out connection for power level {self.power_level}')
 
             # Starting bonus for importer, also allows for an instant blockade (blockade cost = 3)
             country_list[importer].reserve += 3
@@ -237,10 +258,7 @@ class Countries:
             self.reserve -= cost
 
         elif self.player:
-            if self.reserve <= cost:
-                print('You can\'t afford a connection!')
-            else:
-                print(f'You maxed out connection for power level {self.power_level}')
+            print('You can\'t afford a connection!')
 
     def remove_connection(self, random_importer=False):
         if not self.connections:
@@ -252,11 +270,11 @@ class Countries:
             self.connections.pop(random.randint(0, len(self.connections) - 1))
         elif self.player:
             while True:
-                self.competitor_info()
                 try:
                     importer = int(input(f'Choose a connection to remove (by index): '))
-                    if 0 <= importer < len(self.connections) - 1:
-                        self.connections.pop(importer)
+                    if 1 <= importer <= len(self.connections):
+                        self.connections.pop((importer-1))
+                        break
                     else:
                         print('Index out of range.')
                 except ValueError:
@@ -311,11 +329,12 @@ class Countries:
                     target_country, selected_connection = random.choice(imports)
                 elif self.player:
                     while True:
-                        self.competitor_info()
+                        for j, (country, connection) in enumerate(imports, 1):
+                            print(f"{j}. Player {country.name} (level {connection[1]})")
                         try:
-                            index = int(input(f'Choose a connection to blockade (by index): '))
-                            if 0 <= index < len(self.connections) - 1:
-                                target_country, selected_connection = imports[index]
+                            index = int(input("Enter the index of the country you want to blockade: "))
+                            if 1 <= index <= len(imports):
+                                target_country, selected_connection = imports[index-1]
                                 break
                             else:
                                 print('Index out of range.')
@@ -375,17 +394,21 @@ class Countries:
             if random_removal:
                 target_country, selected_connection = random.choice(blocked)
             elif self.player:
+                print("Choose a blockade to remove:")
+                for j, (country, connection) in enumerate(blocked, 1):
+                    print(f"{j}. Player {country.name} (level {connection[1]}{' and BLOCKED' if connection[2] else ''})")
+
                 while True:
-                    self.competitor_info()
                     try:
-                        index = int(input(f'Choose a blockade to remove (by index): '))
-                        if 0 <= index < len(self.connections) - 1:
-                            target_country, selected_connection = blocked[index]
+                        index = int(input("Enter the index of the blockade to remove: "))
+                        if 1 <= index <= len(blocked):
+                            target_country, selected_connection = blocked[index - 1]
+                            print(f"Removed the blockade on player {target_country.name}")
                             break
                         else:
-                            print('Index out of range.')
+                            print("Index out of range.")
                     except ValueError:
-                        print('Please enter a number.')
+                        print("Please enter a valid number.")
             else:
                 connector_names = {conn[0] for conn in self.connections}
                 best_blocked_score, fallback_blocked_score = float('inf'), float('-inf')
@@ -518,36 +541,36 @@ class Countries:
         print('Here is a list of nations with their information:')
         for country in country_list:
             if self == country:
-                print(f'Player {country.name} (YOU) - Town count: {country.towns}, Mine count: {country.mines}, Power level: '
-                      f'{country.power_level}, Reserve: {country.reserve}, Connections: '
+                print(f'Player {country.name} (YOU) - Town count: {country.towns + country.markets}  '
+                      f'({self.towns} towns and {self.markets} markets), Mine count: '
+                      f'{country.mines}, Power level: {country.power_level}, Reserve: {country.reserve}, Connections: '
                       f'{[f'Player {connection[0]} {'(YOU) (' if connection[0] == self.name else ' ('}level {connection[1]}'
                           f'{' and BLOCKED)' if connection[2] else ')'}' for connection in country.connections]}')
             else:
-                print(f'Player {country.name} - Town count: {country.towns}, Mine count: {country.mines}, Power level: '
+                print(f'Player {country.name} - Town count: {country.towns + country.markets}, Mine count: {country.mines}, Power level: '
                       f'{country.power_level}, Connections: {[f'Player {connection[0]} '
                                                              f'{'(YOU) (' if connection[0] == self.name else ' ('}level {connection[1]}'
                                                               f'{' and BLOCKED)' if connection[2] else ')'}' 
                                                               for connection in country.connections]}')
 
     def play_turn(self, turn, total_turns):
+        print(f'\nCurrent turn: {turn + 1} / {total_turns}')
         while True:
             print('\nPurchase a Mine, Purchase a Town, Purchase a Connection, Purchase a Blockade, '
                   'Remove a Connection, Remove a Blockade, End Your Turn')
             try:
                 self.find_power_level()
-                print(f'Your reserve: {self.reserve} coin       Current turn: {turn + 1} / {total_turns}     '
-                      f'Your Power level: {self.power_level}')
-                print(f'Your town count: {self.towns + self.markets} ({self.towns} towns and {self.markets} markets)      '
-                      f'Your mine count: {self.mines}')
+
+                print(f'Your Reserve: {self.reserve} coins          Your power level: {self.power_level}')
                 print(f'Your Connections ({len(self.connections)}): {[f'Player {connection[0]} '
-                                                                      f'(level {connection[1]} {' and BLOCKED)' if connection[2] else ')'}' 
+                                                                      f'(level {connection[1]}{' and BLOCKED)' if connection[2] else ')'}'
                                                                       for connection in self.connections]}')
                 action = int(input(f'Player {self.name}, choose an action from this list by entering it\'s position: '))
                 action -= 1
                 if 0 <= action < len(self.actions) - 1:
                     self.actions[action]()
                 elif action == len(self.actions) - 1:
-                    print('Turn Ended')
+                    print(f'\nPLAYER {self.name}, TURN {turn + 1} ENDED\n')
                     break
                 else:
                     print('Index out of range.')
@@ -573,6 +596,7 @@ try:
             for nation in country_list:
                 nation.generate_money()
                 if nation.player:
+                    nation.competitor_info()
                     nation.play_turn(current_turn, TURNS)
                 else:
                     nation.find_perception()
